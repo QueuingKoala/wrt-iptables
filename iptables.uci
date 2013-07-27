@@ -1,0 +1,6 @@
+config iptables
+	option	save	"/etc/iptables-save.gz"
+	option	empty	"/etc/iptables-blank.gz"
+	#option	up_script	"/etc/iptables.up"
+	option	strip	1
+	option	counters 0

@@ -1,0 +1,87 @@
+#!/bin/sh /etc/rc.common
+
+# Copyright 2013 Josh Cepek <josh.cepek AT usa.net>
+# Licensed under the GPL version 3
+
+NAME=iptables
+BIN_RESTORE=/usr/sbin/iptables-restore
+BIN_SAVE=/usr/sbin/iptables-save
+START=45
+EXTRA_COMMANDS="save show"
+EXTRA_HELP="
+Extra commands:
+	save	Saves current iptables state
+	show	Display current ruleset (to stdout - not to savefile)"
+
+die() {
+	echo "$NAME init: $1"
+	exit ${2:-1}
+}
+iptables_config() {
+	args=""
+	sed_args=""
+	local cfg="$1"
+	config_get savefile "$cfg" save
+	config_get blankfile "$cfg" empty
+	config_get upscript "$cfg" up_script
+	config_get_bool strip "$cfg" strip 1
+	[ $strip -gt 0 ] && sed_args="$sed_args -e '1,1 p' -e '/^#/ d'"
+	config_get_bool counters "$cfg" counters 0
+	[ $counters -gt 0 ] && args="$args -c"
+	[ $counters -eq 0 ] && sed_args="$sed_args -e 's/ \[[0-9]+:[0-9]+\]//'"
+}
+init_config() {
+	[ -x $BIN_RESTORE ] && [ -x $BIN_SAVE ] || \
+		die "Missing support for iptables-save and/or iptables-restore"
+	config_load iptables
+	config_foreach iptables_config iptables
+}
+load_rules() {
+	local rule_file="$1"
+	local action_type="$2"
+	[ -f "$rule_file" ] || die "$action_type FAILED (rules not found at '$rule_file')"
+	gunzip -c "$rule_file" | $BIN_RESTORE $args
+	return $?
+}
+dump_rules() {
+	if [ -z "$sed_args" ]; then
+		$BIN_SAVE $args
+		return $?
+	else
+		eval "$BIN_SAVE $args | sed -r $sed_args"
+		return $?
+	fi
+}
+show() {
+	init_config
+	dump_rules
+}
+start() {
+	init_config
+	echo "$NAME init: starting firewall"
+	load_rules "$savefile" start
+	local ret=$?
+	[ $ret -eq 0 ] && [ -x "$upscript" ] && "$upscript"
+	return $ret
+}
+stop() {
+	init_config
+	echo "$NAME init: WARNING: you are STOPPING all firewall functionality"
+	load_rules "$blankfile" stop
+	return $?
+}
+restart() {
+	start
+	return $?
+}
+save() {
+	init_config
+	[ -n "$savefile" ] || die "save FAILED (rules file not defined)"
+	echo "$NAME init: saving firewall state..."
+	dump_rules | gzip -c > "$savefile"
+	local ret=$?
+	[ $ret -eq 0 ] && echo "$NAME init: ... saved successfully" || \
+		echo "$NAME init: ... FAILED to save"
+	echo
+	return $ret
+}
