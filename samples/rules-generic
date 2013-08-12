@@ -22,8 +22,7 @@ COMMIT
 :OUTPUT ACCEPT
 -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A INPUT -i br-lan -j ACCEPT
--A INPUT -s 127.0.0.0/8 -i lo+ -j ACCEPT
+-A INPUT -i lo+ -j ACCEPT
 -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A FORWARD -i br-lan -o eth0.1 -j ACCEPT
--A OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 COMMIT

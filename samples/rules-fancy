@@ -23,17 +23,14 @@ COMMIT
 :OUTPUT ACCEPT
 :rfc1918_src_drop -
 :rfc1918_dst_drop -
--A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED,DNAT -j ACCEPT
 -A INPUT -i eth0.1 -j rfc1918_drop
 -A INPUT -i br-lan -j ACCEPT
--A INPUT -s 127.0.0.0/8 -i lo+ -j ACCEPT
--A INPUT -m conntrack --ctstate DNAT -j ACCEPT
--A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -i lo+ -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED,DNAT -j ACCEPT
 -A FORWARD -i eth0.1 -o br-lan -j rfc1918_src_drop
 -A FORWARD -i br-lan -o eth0.1 -j rfc1918_dst_drop
 -A FORWARD -i br-lan -o eth0.1 -j ACCEPT
--A FORWARD -i eth0.1 -m conntrack --ctstate DNAT -j ACCEPT
--A OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 -A rfc1918_src_drop -s 192.168.0.0/16 -j DROP
 -A rfc1918_src_drop -s 172.16.0.0/12 -j DROP
 -A rfc1918_src_drop -s 10.0.0.0/8 -j DROP
