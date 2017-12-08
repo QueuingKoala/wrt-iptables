@@ -1,89 +1,98 @@
 #!/bin/sh /etc/rc.common
 
-# Copyright 2013 Josh Cepek <josh.cepek AT usa.net>
+# Copyright 2013-2017 Josh Cepek <josh.cepek AT usa.net>
 # Licensed under the GPL version 3
 
 NAME=iptables
-BIN_RESTORE=/usr/sbin/iptables-restore
-BIN_SAVE=/usr/sbin/iptables-save
+BIN_RESTORE4=/usr/sbin/iptables-restore
+BIN_RESTORE6=/usr/sbin/ip6tables-restore
 START=19
-EXTRA_COMMANDS="save show"
-EXTRA_HELP="
-Extra commands:
-	save	Saves current iptables state
-	show	Display current ruleset (to stdout - not to savefile)"
 
-die() {
-	echo "$NAME init: $1"
-	exit ${2:-1}
-}
-iptables_config() {
-	args=""
-	sed_args=""
+warn() { echo "$1" >&2; }
+restore_rules() {
 	local cfg="$1"
-	config_get savefile "$cfg" save
-	config_get blankfile "$cfg" empty
+	local bin_restore="$2"
+
+	[ -x "$bin_restore" ] || {
+		warn "No restore executable: $bin_restore"
+		return 0
+	}
+
+	config_get_bool enabled "$cfg" enabled 1
+	[ "$enabled" -eq 1 ] || return 0
+
+	config_get legacy_gz "$cfg" save
+	config_get rules_gz "$cfg" rules_gz "$legacy_gz"
+	config_get rules_file "$cfg" rules_file
+	config_get rules_cmd "$cfg" rules_cmd
+	config_get prescript "$cfg" pre_script
 	config_get upscript "$cfg" up_script
 	config_get_bool destroy "$cfg" destroy 1
-	config_get_bool strip "$cfg" strip 1
-	[ "$strip" -gt 0 ] && sed_args="$sed_args -e '1,1 p' -e '/^#/ d'"
 	config_get_bool counters "$cfg" counters 0
-	[ "$counters" -gt 0 ] && args="$args -c"
-	[ "$counters" -eq 0 ] && sed_args="$sed_args -e 's/ \[[0-9]+:[0-9]+\]//'"
-}
-init_config() {
-	[ -x "$BIN_RESTORE" ] && [ -x "$BIN_SAVE" ] || \
-		die "Missing support for iptables-save and/or iptables-restore"
-	config_load iptables
-	config_foreach iptables_config iptables
-}
-load_rules() {
-	local rule_file="$1"
-	local action_type="$2"
-	[ -f "$rule_file" ] || die "$action_type FAILED (rules not found at '$rule_file')"
+
+	local args=""
 	[ "$destroy" -eq 0 ] && args="$args -n"
-	gunzip -c "$rule_file" | "$BIN_RESTORE" $args
-	return $?
-}
-dump_rules() {
-	if [ -z "$sed_args" ]; then
-		"$BIN_SAVE" $args
-		return $?
+	[ "$counters" -eq 1 ] && args="$args -c"
+
+	if [ -n "$rules_gz" ]; then
+		format=gz
+		rules="$rules_gz"
+	elif [ -n "$rules_file" ]; then
+		format=raw
+		rules="$rules_file"
+	elif [ -n "$rules_cmd" ]; then
+		format=cmd
+		rules="$rules_cmd"
+		[ -x "$rules" ] || {
+			warn "Skipping section due to non-executable rules_cmd: $rules"
+			return 0
+		}
 	else
-		eval "$BIN_SAVE $args | sed -r $sed_args"
-		return $?
+		warn "No rules specified; skipping this section"
+		return 0
 	fi
+
+	if [ ! -r "$rules" ]; then
+		warn "Skipping section due to rules file not readable: $rules"
+		return 0
+	fi
+
+	export rules format prescript upscript destroy counters
+	script_run "$prescript" "prescript" || return 0
+
+	{
+		case "$format" in
+			gz)	gzip -dc "$rules" ;;
+			raw)	cat "$rules" ;;
+			cmd)	"$rules" ;;
+		esac
+	} | "$bin_restore" $args || {
+		warn "Failed to restore rules from: $rules"
+	}
+
+	script_run "$upscript" "upscript"
+	return 0
 }
-show() {
-	init_config
-	dump_rules
+script_run() {
+	local _script="$1"
+	local _name="$2"
+	[ -x "$_script" ] || return 0
+	"$_script" || {
+		warn "$_name failed: $_script"
+		return 1
+	}
+	return 0
 }
 start() {
-	init_config
-	echo "$NAME init: starting firewall"
-	load_rules "$savefile" start
-	local ret=$?
-	[ $ret -eq 0 ] && [ -x "$upscript" ] && "$upscript"
-	return $ret
+	echo "$NAME init: loading Netfilter rulesets"
+	config_load iptables
+	config_foreach restore_rules iptables "$BIN_RESTORE4"
+	config_foreach restore_rules ip6tables "$BIN_RESTORE6"
 }
 stop() {
-	init_config
-	echo "$NAME init: WARNING: you are STOPPING all firewall functionality"
-	load_rules "$blankfile" stop
-	return $?
+	echo "$NAME init: WARNING: there is no built-in stop feature. This is a no-op."
+	return 1
 }
 restart() {
 	start
-	return $?
-}
-save() {
-	init_config
-	[ -n "$savefile" ] || die "save FAILED (rules file not defined)"
-	echo "$NAME init: saving firewall state..."
-	dump_rules | gzip -c > "$savefile"
-	local ret=$?
-	[ "$ret" -eq 0 ] && echo "$NAME init: ... saved successfully" || \
-		echo "$NAME init: ... FAILED to save"
-	echo
-	return $ret
 }
