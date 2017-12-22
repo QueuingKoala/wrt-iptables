@@ -21,10 +21,9 @@ restore_rules() {
 	config_get_bool enabled "$cfg" enabled 1
 	[ "$enabled" -eq 1 ] || return 0
 
-	config_get legacy_gz "$cfg" save
-	config_get rules_gz "$cfg" rules_gz "$legacy_gz"
-	config_get rules_file "$cfg" rules_file
-	config_get rules_cmd "$cfg" rules_cmd
+	config_get legacy_rules "$cfg" save
+	config_get format "$cfg" format "raw"
+	config_get rules "$cfg" rules "$legacy_rules"
 	config_get prescript "$cfg" pre_script
 	config_get upscript "$cfg" up_script
 	config_get_bool destroy "$cfg" destroy 1
@@ -34,23 +33,19 @@ restore_rules() {
 	[ "$destroy" -eq 0 ] && args="$args -n"
 	[ "$counters" -eq 1 ] && args="$args -c"
 
-	if [ -n "$rules_gz" ]; then
-		format=gz
-		rules="$rules_gz"
-	elif [ -n "$rules_file" ]; then
-		format=raw
-		rules="$rules_file"
-	elif [ -n "$rules_cmd" ]; then
-		format=cmd
-		rules="$rules_cmd"
-		[ -x "$rules" ] || {
-			warn "Skipping section due to non-executable rules_cmd: $rules"
+	case "$format" in
+		raw|gz|xz)
+			;;
+		cmd)
+			[ -x "$rules" ] || {
+				warn "Skipping section due to non-executable command rules: $rules"
+				return 0
+			}
+			;;
+		*)
+			warn "No rules specified; skipping this section"
 			return 0
-		}
-	else
-		warn "No rules specified; skipping this section"
-		return 0
-	fi
+	esac
 
 	if [ ! -r "$rules" ]; then
 		warn "Skipping section due to rules file not readable: $rules"
@@ -63,6 +58,7 @@ restore_rules() {
 	{
 		case "$format" in
 			gz)	gzip -dc "$rules" ;;
+			xz)	xz -dc "$rules" ;;
 			raw)	cat "$rules" ;;
 			cmd)	"$rules" ;;
 		esac

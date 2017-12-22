@@ -1,16 +1,18 @@
 config iptables
 	option	enabled		0
-	option	rules_gz	"/etc/iptables-save.gz"
-	#option	pre_script	"/etc/iptables.pre"
-	#option	up_script	"/etc/iptables.up"
+	option	rules		'/etc/iptables-save'
+	option	format		'raw'
+	#option	pre_script	'/etc/iptables.pre'
+	#option	up_script	'/etc/iptables.up'
 	#option	counters	0
 	#option destroy		1
 
 config ip6tables
 	option	enabled		0
-	option	rules_gz	"/etc/ip6tables-save.gz"
-	#option	pre_script	"/etc/ip6tables.pre"
-	#option	up_script	"/etc/ip6tables.up"
+	option	rules		'/etc/ip6tables-save'
+	option	format		'raw'
+	#option	pre_script	'/etc/ip6tables.pre'
+	#option	up_script	'/etc/ip6tables.up'
 	#option	counters	0
 	#option destroy		1
 
